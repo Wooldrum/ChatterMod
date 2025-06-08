@@ -1,11 +1,10 @@
 // File: build.gradle.kts
 plugins {
-    // Fabric Loom plugin for Minecraft modding
     id("fabric-loom") version "1.3.5"
     id("maven-publish")
 }
 
-group = "com.example.youtubechat"
+group = "com.wooldrum"
 version = "1.0.0"
 
 repositories {
@@ -14,20 +13,17 @@ repositories {
 }
 
 dependencies {
-    // Minecraft & Yarn mappings
     minecraft("com.mojang:minecraft:1.21.5")
     mappings("net.fabricmc:yarn:1.21.5+build.5:v2")
-    
-    // Fabric loader & Fabric API
+
     modImplementation("net.fabricmc:fabric-loader:0.17.3")
     modImplementation("net.fabricmc.fabric-api:fabric-api:0.88.0+1.21.5")
 
-    // GSON (for parsing YouTube JSON responses)
+    // GSON for JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
 }
 
 java {
-    // We target Java 17 (Minecraft 1.21.5 runs on Java 17+)
     toolchain {
         languageVersion.set(JavaLanguageVersion.of(17))
     }
