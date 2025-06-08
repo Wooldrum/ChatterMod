@@ -14,10 +14,10 @@ repositories {
 
 dependencies {
     minecraft("com.mojang:minecraft:1.21.5")
-    mappings("net.fabricmc:yarn:1.21.5+build.5:v2")
+    mappings("net.fabricmc:yarn:1.21.5+build.1:v2")
 
-    modImplementation("net.fabricmc:fabric-loader:0.17.3")
-    modImplementation("net.fabricmc.fabric-api:fabric-api:0.88.0+1.21.5")
+    modImplementation("net.fabricmc:fabric-loader:0.16.14")
+    modImplementation("net.fabricmc.fabric-api:fabric-api:0.126.0+1.21.5")
 
     // GSON for JSON parsing
     implementation("com.google.code.gson:gson:2.10.1")
