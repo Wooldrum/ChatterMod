@@ -14,10 +14,10 @@ public class ChatterModConfig {
     private static final String CONFIG_DIR  = "config";
     private static final String CONFIG_FILE = "chattermod.properties";
 
-    public final String apiKey;
-    public final String liveChatId; 
-    public final String channelId;
-    public final int    pollIntervalSeconds;
+    public String apiKey;
+    public String liveChatId;
+    public String channelId;
+    public int    pollIntervalSeconds;
 
     private ChatterModConfig(String apiKey, String liveChatId, String channelId, int pollIntervalSeconds) {
         this.apiKey              = apiKey;
@@ -63,6 +63,26 @@ public class ChatterModConfig {
         } catch (Exception e) {
             e.printStackTrace();
             return new ChatterModConfig("", "", "", 5);
+        }
+    }
+
+    /** Saves the current configuration back to the properties file. */
+    public void store() {
+        try {
+            File dir = new File(CONFIG_DIR);
+            if (!dir.exists()) dir.mkdirs();
+
+            File file = new File(dir, CONFIG_FILE);
+            Properties props = new Properties();
+            props.setProperty("apiKey", apiKey);
+            props.setProperty("liveChatId", liveChatId);
+            props.setProperty("channelId", channelId);
+            props.setProperty("pollIntervalSeconds", Integer.toString(pollIntervalSeconds));
+            try (var out = new java.io.FileOutputStream(file)) {
+                props.store(out, "ChatterMod Configuration");
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 }

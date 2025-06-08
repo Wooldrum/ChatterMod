@@ -6,6 +6,10 @@ import com.google.gson.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
+import com.mojang.brigadier.arguments.StringArgumentType;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.LiteralText;
@@ -62,6 +66,8 @@ public class ChatterMod implements ClientModInitializer {
 
         System.out.printf("[ChatterMod] ✅ Polling YouTube chat (liveChatId=%s) every %d seconds.%n",
                           liveChatId, config.pollIntervalSeconds);
+
+        registerCommands();
     }
 
     private String fetchLiveChatId(String apiKey, String channelId) {
@@ -169,5 +175,30 @@ public class ChatterMod implements ClientModInitializer {
                            .getChatHud()
                            .addMessage(new LiteralText(line))
         );
+    }
+
+    /** Registers in-game client commands for configuring the mod. */
+    private void registerCommands() {
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            dispatcher.register(ClientCommandManager.literal("chattermod")
+                .then(ClientCommandManager.literal("apikey")
+                    .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            config.apiKey = StringArgumentType.getString(ctx, "key");
+                            config.store();
+                            ((FabricClientCommandSource) ctx.getSource()).sendFeedback(new LiteralText("API key saved"));
+                            return 1;
+                        })))
+                .then(ClientCommandManager.literal("channel")
+                    .then(ClientCommandManager.argument("id", StringArgumentType.greedyString())
+                        .executes(ctx -> {
+                            config.channelId = StringArgumentType.getString(ctx, "id");
+                            liveChatId = fetchLiveChatId(config.apiKey, config.channelId);
+                            config.liveChatId = liveChatId;
+                            config.store();
+                            ((FabricClientCommandSource) ctx.getSource()).sendFeedback(new LiteralText("Channel updated"));
+                            return 1;
+                        }))));
+        });
     }
 }
