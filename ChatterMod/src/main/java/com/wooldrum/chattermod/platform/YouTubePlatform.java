@@ -45,7 +45,8 @@ public class YouTubePlatform implements ChatPlatform {
             return;
         }
 
-        this.liveChatId = account.liveChatId().isBlank() ? resolveLiveChatIdFromChannel() : account.liveChatId();
+        // FIX: Always resolve the chat ID from the channel, as the liveChatId is no longer in the config.
+        this.liveChatId = resolveLiveChatIdFromChannel();
 
         if (this.liveChatId == null || this.liveChatId.isBlank()) {
             ChatterMod.LOGGER.error("[YouTube] Could not find a live chat ID for channel '{}'.", account.channelId());
@@ -53,7 +54,8 @@ public class YouTubePlatform implements ChatPlatform {
         }
 
         poller = Executors.newSingleThreadScheduledExecutor();
-        poller.scheduleAtFixedRate(this::poll, 0, account.pollIntervalSeconds(), TimeUnit.SECONDS);
+        // FIX: Use a fixed 10-second polling interval, since this was removed from the config.
+        poller.scheduleAtFixedRate(this::poll, 0, 10, TimeUnit.SECONDS);
         ChatterMod.LOGGER.info("[YouTube] Connected and polling chat for liveChatId: {}", this.liveChatId);
     }
 
@@ -101,7 +103,6 @@ public class YouTubePlatform implements ChatPlatform {
     }
 
     private String resolveLiveChatIdFromChannel() {
-        // This logic is mostly the same as before
         try {
             String searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet"
                     + "&channelId=" + URLEncoder.encode(account.channelId(), StandardCharsets.UTF_8)
@@ -115,16 +116,18 @@ public class YouTubePlatform implements ChatPlatform {
 
             JsonObject root = JsonParser.parseString(res.body()).getAsJsonObject();
             if (!root.has("items") || root.getAsJsonArray("items").isEmpty()) return null;
-            
+
             String videoId = root.getAsJsonArray("items").get(0).getAsJsonObject().getAsJsonObject("id").get("videoId").getAsString();
 
             String detailUrl = "https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails&id=" + videoId + "&key=" + account.apiKey();
             req = HttpRequest.newBuilder().uri(URI.create(detailUrl)).build();
             res = http.send(req, HttpResponse.BodyHandlers.ofString());
-            
+
             if (res.statusCode() != 200) return null;
 
             JsonObject detailRoot = JsonParser.parseString(res.body()).getAsJsonObject();
+            if (!detailRoot.has("items") || detailRoot.getAsJsonArray("items").isEmpty()) return null;
+            
             return detailRoot.getAsJsonArray("items").get(0).getAsJsonObject().getAsJsonObject("liveStreamingDetails").get("activeLiveChatId").getAsString();
         } catch (Exception e) {
             ChatterMod.LOGGER.error("[YouTube] Failed to auto-resolve live chat ID.", e);
