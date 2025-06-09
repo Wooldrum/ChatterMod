@@ -52,15 +52,24 @@ After setting your credentials, run /chattermod reload to connect!
 
 For reference, here is what the config/chattermod.properties file looks like. It will be generated automatically in your .minecraft/config/ folder.
 
-#ChatterMod BETA Configuration
+ChatterMod BETA Configuration
+
 #Generated on...
+
 general.showPlatformLogo=true
+
 general.usePlatformColors=true
+
 colors.youtube=RED
+
 colors.twitch=DARK_PURPLE
+
 youtube.1.channelId=UCYOURCHANNELID_HERE
+
 youtube.1.apiKey=YOUR_API_KEY_HERE
+
 twitch.1.channelName=your_twitch_channel_name
+
 twitch.1.oauthToken=YOUR_OAUTH_TOKEN_HERE
 
 **Beta Notes:**
