@@ -18,7 +18,7 @@ NOTE: PLEASE READ BELOW TO LEARN HOW TO PUT IN API KEYS!
 
 -     Make sure you have Fabric Loader and Fabric API for Minecraft 1.21.5 installed.
 
--     Download the ChatterMod-1.0.0-BETA-all.jar file. (Important: You must use the JAR with "-all" in the name).
+-     Download the ChatterMod-1.0.0-BETA-all.jar file.
 
 -     Drop the downloaded JAR file into your .minecraft/mods/ folder.
 
