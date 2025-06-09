@@ -29,30 +29,27 @@ public class ChatterMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        LOGGER.info("Initializing ChatterMod v2...");
+        LOGGER.info("Initializing ChatterMod v2.5...");
         this.config = ChatterModConfig.load();
         
         HttpClient httpClient = HttpClient.newHttpClient();
 
-        // Initialize and connect all configured platforms
         config.youtubeAccounts.forEach(acc -> activePlatforms.add(new YouTubePlatform(acc, httpClient)));
         config.twitchAccounts.forEach(acc -> activePlatforms.add(new TwitchPlatform(acc)));
-        config.kickAccounts.forEach(acc -> activePlatforms.add(new KickPlatform(acc)));
 
         for (ChatPlatform platform : activePlatforms) {
-            platform.onMessage(messageQueue::add); // Add messages from any platform to the queue
+            platform.onMessage(messageQueue::add);
             platform.connect();
         }
 
         startMessageProcessor();
-        // TODO: Add new commands for managing platforms
     }
 
     private void startMessageProcessor() {
         messageProcessorThread = new Thread(() -> {
             try {
                 while (!Thread.currentThread().isInterrupted()) {
-                    ChatMessage chatMessage = messageQueue.take(); // Blocks until a message is available
+                    ChatMessage chatMessage = messageQueue.take();
                     displayInMinecraftChat(chatMessage);
                 }
             } catch (InterruptedException e) {
@@ -77,14 +74,10 @@ public class ChatterMod implements ClientModInitializer {
                 platformColor = Formatting.byName(config.twitchColor.toUpperCase());
                 platformTag = "[TW]";
             }
-            case KICK -> {
-                platformColor = Formatting.byName(config.kickColor.toUpperCase());
-                platformTag = "[K]";
-            }
+            // KICK case removed
         }
-        if (platformColor == null) platformColor = Formatting.WHITE; // Fallback
+        if (platformColor == null) platformColor = Formatting.WHITE;
 
-        // Build the message with colors
         MutableText fullMessage = Text.literal("");
         
         if (config.showPlatformLogo) {
