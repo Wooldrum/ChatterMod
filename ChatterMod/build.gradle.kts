@@ -10,14 +10,12 @@ val fabric_api_version = "0.126.0+1.21.5"
 val yarn_mappings = "1.21.5+build.1:v2"
 val gson_version = "2.10.1"
 val twitch4j_version = "1.20.0"
-// NEW, WORKING KICK LIBRARY VERSION
-val kick_java_version = "1.4.0"
 
 group = "com.wooldrum"
-version = "2.1.0" // Version bump for the new library
+version = "2.5.0" // Version bump for YouTube + Twitch
 
 repositories {
-    mavenCentral() // The new Kick library is here
+    mavenCentral()
     maven { url = uri("https://maven.fabricmc.net/") }
     maven { url = uri("https://jitpack.io") } // Still needed for Twitch4J
 }
@@ -31,14 +29,12 @@ dependencies {
 
     implementation("com.google.code.gson:gson:$gson_version")
 
-    // Twitch4J (unchanged)
+    // Twitch4J for Twitch Integration
     implementation("com.github.twitch4j:twitch4j-chat:$twitch4j_version")
     implementation("com.github.twitch4j:twitch4j-auth:$twitch4j_version")
     implementation("com.github.twitch4j:twitch4j-common:$twitch4j_version")
 
-    // REMOVED old Kick API, ADDED new one
-    implementation("io.github.oxylca:kick-java:$kick_java_version")
-
+    // SLF4J is required by Twitch4J
     implementation("org.slf4j:slf4j-simple:2.0.13")
 }
 
