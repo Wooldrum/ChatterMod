@@ -52,7 +52,7 @@ tasks.processResources {
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()
-    isZip64 = true // <-- THIS IS THE FIX
+    isZip64 = true // <-- THIS IS THE REQUIRED FIX
 }
 
 tasks.build {
