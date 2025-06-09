@@ -1,6 +1,3 @@
-// File: build.gradle.kts
-
-// Add the shadow plugin for creating a JAR with all dependencies
 plugins {
     id("fabric-loom") version "1.3.5"
     id("maven-publish")
