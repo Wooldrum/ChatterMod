@@ -6,9 +6,9 @@ NOTE: PLEASE READ BELOW TO LEARN HOW TO PUT IN API KEYS!
 
 **Features:**
 
-- Platform Indicators: Each message is prefixed with a toggleable tag ([YT] or [TW]) so you always know where it came from.
+- Platform Indicators: Each message is prefixed with a toggleable tag ([YT] or [TW]) so you always know where it came from. (Toggleable!)
 
-- Customizable Colors: Make each platform's name tag distinct with toggleable colors (defaults to YouTube Red and Twitch Purple).
+- Customizable Colors: Make each platform's name tag distinct with toggleable colors (defaults to YouTube Red and Twitch Purple). (Toggleable!)
 
 - In-Game Configuration: No need to restart! Use simple in-game commands to set up your accounts, toggle features, and reload the mod on the fly.
 
