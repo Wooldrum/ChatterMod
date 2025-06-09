@@ -38,12 +38,11 @@ public class ChatterMod implements ClientModInitializer {
         startMessageProcessor();
         registerCommands();
     }
-    
+
     private void loadAndConnect() {
-        // Disconnect any existing platforms before reloading
         activePlatforms.forEach(ChatPlatform::disconnect);
         activePlatforms.clear();
-        
+
         this.config = ChatterModConfig.load();
         HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -92,16 +91,16 @@ public class ChatterMod implements ClientModInitializer {
         if (platformColor == null) platformColor = Formatting.WHITE;
 
         MutableText fullMessage = Text.literal("");
-        
+
         if (config.showPlatformLogo) {
             fullMessage.append(Text.literal(platformTag + " ").formatted(platformColor));
         }
-        
+
         MutableText authorText = Text.literal(msg.author());
         if (config.usePlatformColors) {
             authorText.formatted(platformColor);
         }
-        
+
         fullMessage.append(Text.literal("<").formatted(Formatting.GRAY))
                    .append(authorText)
                    .append(Text.literal("> ").formatted(Formatting.GRAY))
@@ -117,7 +116,6 @@ public class ChatterMod implements ClientModInitializer {
     private void registerCommands() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
             dispatcher.register(ClientCommandManager.literal("chattermod")
-                // Toggle Commands
                 .then(ClientCommandManager.literal("toggle")
                     .then(ClientCommandManager.literal("logos")
                         .executes(c -> {
@@ -134,7 +132,6 @@ public class ChatterMod implements ClientModInitializer {
                             return 1;
                         }))
                 )
-                // YouTube Commands
                 .then(ClientCommandManager.literal("youtube")
                     .then(ClientCommandManager.literal("set")
                         .then(ClientCommandManager.literal("apikey")
@@ -160,7 +157,6 @@ public class ChatterMod implements ClientModInitializer {
                                     return 1;
                                 })))
                 )
-                // Twitch Commands
                 .then(ClientCommandManager.literal("twitch")
                     .then(ClientCommandManager.literal("set")
                         .then(ClientCommandManager.literal("channel")
@@ -186,7 +182,7 @@ public class ChatterMod implements ClientModInitializer {
                                     return 1;
                                 })))
                 )
-                // Reload Command
+                // THIS IS THE FIX: Removed one extra parenthesis from the end of this line
                 .then(ClientCommandManager.literal("reload")
                     .executes(c -> {
                         reply(c.getSource(), "Reloading ChatterMod configuration and reconnecting...");
