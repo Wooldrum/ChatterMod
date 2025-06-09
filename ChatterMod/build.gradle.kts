@@ -12,7 +12,7 @@ val fabric_api_version = "0.126.0+1.21.5"
 val yarn_mappings = "1.21.5+build.1:v2"
 val gson_version = "2.10.1"
 val twitch4j_version = "1.20.0"
-val kick_api_version = "1.1.3"
+val kick_api_version = "1.1.2" // Community API for Kick (CHANGED to working version)
 
 group = "com.wooldrum"
 version = "2.0.0"
