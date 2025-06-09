@@ -7,7 +7,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.ClientCommandSource;  // ← newly added import
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;  // ← corrected import
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
@@ -166,7 +166,7 @@ public class ChatterMod implements ClientModInitializer {
                         .executes(c -> {
                             cfg.apiKey = StringArgumentType.getString(c, "key");
                             cfg.store();
-                            reply(c.getSource(), "API key saved.");
+                            reply((FabricClientCommandSource)c.getSource(), "API key saved.");
                             return 1;
                         })))
                 .then(ClientCommandManager.literal("channel")
@@ -176,16 +176,16 @@ public class ChatterMod implements ClientModInitializer {
                             cfg.liveChatId = "";
                             cfg.store();
                             liveChatId = resolveLiveChatId();
-                            reply(c.getSource(), liveChatId.isBlank()
-                                ? "No live stream."
-                                : "Channel updated.");
+                            reply((FabricClientCommandSource)c.getSource(),
+                                  liveChatId.isBlank() ? "No live stream." : "Channel updated.");
                             return 1;
                         })))
             )
         );
     }
 
-    private static void reply(ClientCommandSource src, String message) {
+    // ← signature updated to use FabricClientCommandSource
+    private static void reply(FabricClientCommandSource src, String message) {
         src.sendFeedback(Text.literal(message));
     }
 }
