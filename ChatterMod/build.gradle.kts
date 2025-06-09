@@ -12,7 +12,7 @@ val gson_version = "2.10.1"
 val twitch4j_version = "1.20.0"
 
 group = "com.wooldrum"
-version = "2.5.0"
+version = "1.0.0-BETA" // Updated version!
 
 repositories {
     mavenCentral()
@@ -28,11 +28,9 @@ dependencies {
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabric_api_version")
 
     implementation("com.google.code.gson:gson:$gson_version")
-
     implementation("com.github.twitch4j:twitch4j-chat:$twitch4j_version")
     implementation("com.github.twitch4j:twitch4j-auth:$twitch4j_version")
     implementation("com.github.twitch4j:twitch4j-common:$twitch4j_version")
-
     implementation("org.slf4j:slf4j-simple:2.0.13")
 }
 
@@ -48,11 +46,10 @@ tasks.processResources {
     }
 }
 
-// Enable Zip64 format for the large JAR file
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()
-    isZip64 = true // <-- THIS IS THE REQUIRED FIX
+    isZip64 = true
 }
 
 tasks.build {
