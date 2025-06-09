@@ -33,29 +33,38 @@ public class ChatterMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        LOGGER.info("Initializing ChatterMod v2.5...");
-        this.config = ChatterModConfig.load();
+        LOGGER.info("Initializing ChatterMod BETA 1.0...");
+        loadAndConnect();
+        startMessageProcessor();
+        registerCommands();
+    }
+    
+    private void loadAndConnect() {
+        // Disconnect any existing platforms before reloading
+        activePlatforms.forEach(ChatPlatform::disconnect);
+        activePlatforms.clear();
         
+        this.config = ChatterModConfig.load();
         HttpClient httpClient = HttpClient.newHttpClient();
 
-        config.youtubeAccounts.forEach(acc -> activePlatforms.add(new YouTubePlatform(acc, httpClient)));
-        config.twitchAccounts.forEach(acc -> activePlatforms.add(new TwitchPlatform(acc)));
+        if (!config.youtubeAccounts.isEmpty()) {
+            activePlatforms.add(new YouTubePlatform(config.youtubeAccounts.get(0), httpClient));
+        }
+        if (!config.twitchAccounts.isEmpty()) {
+            activePlatforms.add(new TwitchPlatform(config.twitchAccounts.get(0)));
+        }
 
         for (ChatPlatform platform : activePlatforms) {
             platform.onMessage(messageQueue::add);
             platform.connect();
         }
-
-        startMessageProcessor();
-        registerCommands(); // <-- THE FIX: This line was missing!
     }
 
     private void startMessageProcessor() {
         messageProcessorThread = new Thread(() -> {
             try {
                 while (!Thread.currentThread().isInterrupted()) {
-                    ChatMessage chatMessage = messageQueue.take();
-                    displayInMinecraftChat(chatMessage);
+                    displayInMinecraftChat(messageQueue.take());
                 }
             } catch (InterruptedException e) {
                 LOGGER.info("Chat message processor thread interrupted.");
@@ -88,10 +97,15 @@ public class ChatterMod implements ClientModInitializer {
             fullMessage.append(Text.literal(platformTag + " ").formatted(platformColor));
         }
         
-        fullMessage.append(Text.literal("<").formatted(Formatting.GRAY));
-        fullMessage.append(Text.literal(msg.author()).formatted(platformColor));
-        fullMessage.append(Text.literal("> ").formatted(Formatting.GRAY));
-        fullMessage.append(Text.literal(msg.message()).formatted(Formatting.WHITE));
+        MutableText authorText = Text.literal(msg.author());
+        if (config.usePlatformColors) {
+            authorText.formatted(platformColor);
+        }
+        
+        fullMessage.append(Text.literal("<").formatted(Formatting.GRAY))
+                   .append(authorText)
+                   .append(Text.literal("> ").formatted(Formatting.GRAY))
+                   .append(Text.literal(msg.message()).formatted(Formatting.WHITE));
 
         MinecraftClient.getInstance().execute(() -> {
             if (MinecraftClient.getInstance().inGameHud != null) {
@@ -100,54 +114,85 @@ public class ChatterMod implements ClientModInitializer {
         });
     }
 
-    // --- NEWLY RE-ADDED COMMANDS ---
     private void registerCommands() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
             dispatcher.register(ClientCommandManager.literal("chattermod")
+                // Toggle Commands
+                .then(ClientCommandManager.literal("toggle")
+                    .then(ClientCommandManager.literal("logos")
+                        .executes(c -> {
+                            config.showPlatformLogo = !config.showPlatformLogo;
+                            config.save();
+                            reply(c.getSource(), "Platform logos " + (config.showPlatformLogo ? "enabled." : "disabled."));
+                            return 1;
+                        }))
+                    .then(ClientCommandManager.literal("colors")
+                        .executes(c -> {
+                            config.usePlatformColors = !config.usePlatformColors;
+                            config.save();
+                            reply(c.getSource(), "Platform colors " + (config.usePlatformColors ? "enabled." : "disabled."));
+                            return 1;
+                        }))
+                )
+                // YouTube Commands
                 .then(ClientCommandManager.literal("youtube")
-                    .then(ClientCommandManager.literal("set-apikey")
-                        .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
-                            .executes(c -> {
-                                // For simplicity, this affects the first YouTube account in the config
-                                if (!config.youtubeAccounts.isEmpty()) {
-                                    var acc = config.youtubeAccounts.get(0);
-                                    config.youtubeAccounts.set(0, new ChatterModConfig.YouTubeAccount(acc.channelId(), acc.liveChatId(), StringArgumentType.getString(c, "key"), acc.pollIntervalSeconds()));
-                                    // A real implementation would need a way to save this back to the properties file
-                                    reply(c.getSource(), "YouTube API Key set. Please restart the game to apply.");
-                                } else {
-                                    reply(c.getSource(), "No YouTube account configured in properties file.");
-                                }
-                                return 1;
-                            })))
+                    .then(ClientCommandManager.literal("set")
+                        .then(ClientCommandManager.literal("apikey")
+                            .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
+                                .executes(c -> {
+                                    String key = StringArgumentType.getString(c, "key");
+                                    String channelId = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).channelId();
+                                    config.youtubeAccounts.clear();
+                                    config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(channelId, key));
+                                    config.save();
+                                    reply(c.getSource(), "YouTube API Key set. Use /chattermod reload to apply.");
+                                    return 1;
+                                })))
+                        .then(ClientCommandManager.literal("channel")
+                            .then(ClientCommandManager.argument("id", StringArgumentType.string())
+                                .executes(c -> {
+                                    String id = StringArgumentType.getString(c, "id");
+                                    String apiKey = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).apiKey();
+                                    config.youtubeAccounts.clear();
+                                    config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(id, apiKey));
+                                    config.save();
+                                    reply(c.getSource(), "YouTube Channel ID set. Use /chattermod reload to apply.");
+                                    return 1;
+                                })))
                 )
+                // Twitch Commands
                 .then(ClientCommandManager.literal("twitch")
-                    .then(ClientCommandManager.literal("set-channel")
-                        .then(ClientCommandManager.argument("name", StringArgumentType.word())
-                            .executes(c -> {
-                                if (!config.twitchAccounts.isEmpty()) {
-                                    var acc = config.twitchAccounts.get(0);
-                                    config.twitchAccounts.set(0, new ChatterModConfig.TwitchAccount(StringArgumentType.getString(c, "name"), acc.oauthToken()));
-                                    reply(c.getSource(), "Twitch channel set. Please restart the game to apply.");
-                                } else {
-                                     reply(c.getSource(), "No Twitch account configured in properties file.");
-                                }
-                                return 1;
-                            })))
-                    .then(ClientCommandManager.literal("set-token")
-                        .then(ClientCommandManager.argument("token", StringArgumentType.greedyString())
-                            .executes(c -> {
-                                if (!config.twitchAccounts.isEmpty()) {
-                                    var acc = config.twitchAccounts.get(0);
-                                    // We don't save the token back to the file for security, this is session-only
-                                    // A full implementation would need a better storage mechanism.
-                                    config.twitchAccounts.set(0, new ChatterModConfig.TwitchAccount(acc.channelName(), StringArgumentType.getString(c, "token")));
-                                    reply(c.getSource(), "Twitch token set. Please restart the game to apply.");
-                                } else {
-                                     reply(c.getSource(), "No Twitch account configured in properties file.");
-                                }
-                                return 1;
-                            })))
+                    .then(ClientCommandManager.literal("set")
+                        .then(ClientCommandManager.literal("channel")
+                            .then(ClientCommandManager.argument("name", StringArgumentType.string())
+                                .executes(c -> {
+                                    String name = StringArgumentType.getString(c, "name");
+                                    String token = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).oauthToken();
+                                    config.twitchAccounts.clear();
+                                    config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
+                                    config.save();
+                                    reply(c.getSource(), "Twitch channel name set. Use /chattermod reload to apply.");
+                                    return 1;
+                                })))
+                        .then(ClientCommandManager.literal("token")
+                            .then(ClientCommandManager.argument("token", StringArgumentType.greedyString())
+                                .executes(c -> {
+                                    String token = StringArgumentType.getString(c, "token");
+                                    String name = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).channelName();
+                                    config.twitchAccounts.clear();
+                                    config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
+                                    config.save();
+                                    reply(c.getSource(), "Twitch OAuth token set. Use /chattermod reload to apply.");
+                                    return 1;
+                                })))
                 )
+                // Reload Command
+                .then(ClientCommandManager.literal("reload")
+                    .executes(c -> {
+                        reply(c.getSource(), "Reloading ChatterMod configuration and reconnecting...");
+                        loadAndConnect();
+                        return 1;
+                    }))
             )
         );
     }
