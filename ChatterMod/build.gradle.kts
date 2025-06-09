@@ -1,5 +1,3 @@
-// File: build.gradle.kts
-
 plugins {
     id("fabric-loom") version "1.3.5"
     id("maven-publish")
