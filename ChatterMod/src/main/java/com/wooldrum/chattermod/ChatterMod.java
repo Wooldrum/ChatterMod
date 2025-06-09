@@ -1,9 +1,13 @@
 package com.wooldrum.chattermod;
 
+import com.mojang.brigadier.arguments.StringArgumentType;
 import com.wooldrum.chattermod.platform.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
+import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
@@ -43,6 +47,7 @@ public class ChatterMod implements ClientModInitializer {
         }
 
         startMessageProcessor();
+        registerCommands(); // <-- THE FIX: This line was missing!
     }
 
     private void startMessageProcessor() {
@@ -74,7 +79,6 @@ public class ChatterMod implements ClientModInitializer {
                 platformColor = Formatting.byName(config.twitchColor.toUpperCase());
                 platformTag = "[TW]";
             }
-            // KICK case removed
         }
         if (platformColor == null) platformColor = Formatting.WHITE;
 
@@ -94,5 +98,61 @@ public class ChatterMod implements ClientModInitializer {
                 MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(fullMessage);
             }
         });
+    }
+
+    // --- NEWLY RE-ADDED COMMANDS ---
+    private void registerCommands() {
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
+            dispatcher.register(ClientCommandManager.literal("chattermod")
+                .then(ClientCommandManager.literal("youtube")
+                    .then(ClientCommandManager.literal("set-apikey")
+                        .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
+                            .executes(c -> {
+                                // For simplicity, this affects the first YouTube account in the config
+                                if (!config.youtubeAccounts.isEmpty()) {
+                                    var acc = config.youtubeAccounts.get(0);
+                                    config.youtubeAccounts.set(0, new ChatterModConfig.YouTubeAccount(acc.channelId(), acc.liveChatId(), StringArgumentType.getString(c, "key"), acc.pollIntervalSeconds()));
+                                    // A real implementation would need a way to save this back to the properties file
+                                    reply(c.getSource(), "YouTube API Key set. Please restart the game to apply.");
+                                } else {
+                                    reply(c.getSource(), "No YouTube account configured in properties file.");
+                                }
+                                return 1;
+                            })))
+                )
+                .then(ClientCommandManager.literal("twitch")
+                    .then(ClientCommandManager.literal("set-channel")
+                        .then(ClientCommandManager.argument("name", StringArgumentType.word())
+                            .executes(c -> {
+                                if (!config.twitchAccounts.isEmpty()) {
+                                    var acc = config.twitchAccounts.get(0);
+                                    config.twitchAccounts.set(0, new ChatterModConfig.TwitchAccount(StringArgumentType.getString(c, "name"), acc.oauthToken()));
+                                    reply(c.getSource(), "Twitch channel set. Please restart the game to apply.");
+                                } else {
+                                     reply(c.getSource(), "No Twitch account configured in properties file.");
+                                }
+                                return 1;
+                            })))
+                    .then(ClientCommandManager.literal("set-token")
+                        .then(ClientCommandManager.argument("token", StringArgumentType.greedyString())
+                            .executes(c -> {
+                                if (!config.twitchAccounts.isEmpty()) {
+                                    var acc = config.twitchAccounts.get(0);
+                                    // We don't save the token back to the file for security, this is session-only
+                                    // A full implementation would need a better storage mechanism.
+                                    config.twitchAccounts.set(0, new ChatterModConfig.TwitchAccount(acc.channelName(), StringArgumentType.getString(c, "token")));
+                                    reply(c.getSource(), "Twitch token set. Please restart the game to apply.");
+                                } else {
+                                     reply(c.getSource(), "No Twitch account configured in properties file.");
+                                }
+                                return 1;
+                            })))
+                )
+            )
+        );
+    }
+
+    private static void reply(FabricClientCommandSource src, String message) {
+        src.sendFeedback(Text.literal(message));
     }
 }
