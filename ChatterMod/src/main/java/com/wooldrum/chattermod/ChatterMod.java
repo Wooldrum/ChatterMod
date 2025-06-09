@@ -7,9 +7,11 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource; // Corrected import
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.net.URI;
@@ -22,6 +24,8 @@ import java.util.concurrent.*;
 @Environment(EnvType.CLIENT)
 public class ChatterMod implements ClientModInitializer {
 
+    public static final Logger LOGGER = LoggerFactory.getLogger("ChatterMod");
+
     private ChatterModConfig cfg;
     private HttpClient http;
     private ScheduledExecutorService exec;
@@ -30,13 +34,15 @@ public class ChatterMod implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        LOGGER.info("Initializing ChatterMod by Wooldrum...");
+
         cfg = ChatterModConfig.load();
         http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
 
         liveChatId = cfg.liveChatId.isBlank() ? resolveLiveChatId() : cfg.liveChatId;
 
         if (liveChatId.isBlank()) {
-            System.err.println("[ChatterMod] No live stream found; mod is idle.");
+            LOGGER.warn("Could not find an active livestream. Mod is idle. Use '/chattermod' to set credentials.");
             registerCommands(); // Still register commands so user can set credentials
             return;
         }
@@ -47,7 +53,7 @@ public class ChatterMod implements ClientModInitializer {
 
     private void startPolling() {
         if (exec != null && !exec.isShutdown()) {
-            exec.shutdownNow(); // Stop previous poller if it exists
+            exec.shutdownNow();
         }
         exec = Executors.newSingleThreadScheduledExecutor(r -> {
             Thread t = new Thread(r, "ChatterMod-Poller");
@@ -55,13 +61,12 @@ public class ChatterMod implements ClientModInitializer {
             return t;
         });
         exec.scheduleAtFixedRate(this::poll, 0, cfg.pollIntervalSeconds, TimeUnit.SECONDS);
-
-        System.out.printf("[ChatterMod] ✔ Polling started every %d seconds (liveChatId=%s)%n",
-                cfg.pollIntervalSeconds, liveChatId);
+        LOGGER.info("✔ Polling started every {} seconds (liveChatId={})", cfg.pollIntervalSeconds, liveChatId);
     }
 
     private void poll() {
-        if (liveChatId.isBlank()) return; // Don't poll if we don't have an ID
+        // Method implementation remains the same...
+        if (liveChatId.isBlank()) return;
         try {
             String url = "https://www.googleapis.com/youtube/v3/liveChat/messages"
                     + "?part=snippet,authorDetails"
@@ -75,8 +80,8 @@ public class ChatterMod implements ClientModInitializer {
             HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
 
             if (res.statusCode() != 200) {
-                System.err.printf("[ChatterMod] HTTP %d – check API key/quota. Polling stopped.%n", res.statusCode());
-                exec.shutdown(); // Stop polling on error
+                LOGGER.error("HTTP {} – check API key/quota. Polling stopped.", res.statusCode());
+                if (exec != null) exec.shutdown();
                 return;
             }
 
@@ -94,8 +99,8 @@ public class ChatterMod implements ClientModInitializer {
                 }
             }
         } catch (Exception e) {
-            e.printStackTrace();
-            if (exec != null) exec.shutdown(); // Stop on other exceptions
+            LOGGER.error("An error occurred during polling", e);
+            if (exec != null) exec.shutdown();
         }
     }
 
@@ -107,8 +112,14 @@ public class ChatterMod implements ClientModInitializer {
     }
 
     private String resolveLiveChatId() {
-        if (cfg.channelId.isBlank() || cfg.apiKey.isBlank()) return "";
+        if (cfg.channelId.isBlank() || cfg.apiKey.isBlank() || cfg.apiKey.equals("YOUR_API_KEY_HERE")) {
+            LOGGER.warn("Cannot resolve live chat ID: API key or Channel ID is missing/default.");
+            return "";
+        }
         try {
+            LOGGER.info("Attempting to resolve liveChatId for channel: {}", cfg.channelId);
+
+            // --- First API Call: Search for the live video ---
             String searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet"
                     + "&channelId=" + URLEncoder.encode(cfg.channelId, StandardCharsets.UTF_8)
                     + "&eventType=live&type=video"
@@ -118,11 +129,29 @@ public class ChatterMod implements ClientModInitializer {
                     .timeout(Duration.ofSeconds(10)).GET().build();
             HttpResponse<String> searchRes = http.send(searchReq, HttpResponse.BodyHandlers.ofString());
 
-            JsonArray items = JsonParser.parseString(searchRes.body()).getAsJsonObject().getAsJsonArray("items");
-            if (items.isEmpty()) return "";
+            // FIX: Check for HTTP errors before parsing JSON
+            if (searchRes.statusCode() != 200) {
+                LOGGER.error("YouTube API error during search: HTTP {} - {}", searchRes.statusCode(), searchRes.body());
+                return "";
+            }
+
+            JsonObject searchRoot = JsonParser.parseString(searchRes.body()).getAsJsonObject();
+
+            // FIX: Check that the "items" array exists before trying to use it
+            if (!searchRoot.has("items")) {
+                LOGGER.error("YouTube API response did not contain 'items' array. Full response: {}", searchRes.body());
+                return "";
+            }
+
+            JsonArray items = searchRoot.getAsJsonArray("items");
+            if (items.isEmpty()) {
+                LOGGER.warn("No active live broadcast found for the channel.");
+                return "";
+            }
 
             String videoId = items.get(0).getAsJsonObject().getAsJsonObject("id").get("videoId").getAsString();
 
+            // --- Second API Call: Get video details ---
             String detailUrl = "https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails"
                     + "&id=" + videoId + "&key=" + URLEncoder.encode(cfg.apiKey, StandardCharsets.UTF_8);
 
@@ -130,13 +159,25 @@ public class ChatterMod implements ClientModInitializer {
                     .timeout(Duration.ofSeconds(10)).GET().build();
             HttpResponse<String> detailRes = http.send(detailReq, HttpResponse.BodyHandlers.ofString());
 
-            JsonObject details = JsonParser.parseString(detailRes.body()).getAsJsonObject()
-                    .getAsJsonArray("items").get(0).getAsJsonObject()
+            // FIX: Add same error checking for the second call
+            if (detailRes.statusCode() != 200) {
+                LOGGER.error("YouTube API error during video details fetch: HTTP {} - {}", detailRes.statusCode(), detailRes.body());
+                return "";
+            }
+
+            JsonObject detailRoot = JsonParser.parseString(detailRes.body()).getAsJsonObject();
+            if (!detailRoot.has("items") || detailRoot.getAsJsonArray("items").isEmpty()) {
+                LOGGER.error("Could not get video details for videoId '{}'. Response: {}", videoId, detailRes.body());
+                return "";
+            }
+
+            JsonObject details = detailRoot.getAsJsonArray("items").get(0).getAsJsonObject()
                     .getAsJsonObject("liveStreamingDetails");
 
             return details.has("activeLiveChatId") ? details.get("activeLiveChatId").getAsString() : "";
-        } catch (IOException | InterruptedException e) {
-            e.printStackTrace();
+
+        } catch (Exception e) {
+            LOGGER.error("Failed to resolve Live Chat ID from channel", e);
             return "";
         }
     }
@@ -164,7 +205,7 @@ public class ChatterMod implements ClientModInitializer {
                                                 startPolling();
                                             } else {
                                                 reply(c.getSource(), "Channel updated, but no active livestream found.");
-                                                if(exec != null) exec.shutdown();
+                                                if(exec != null && !exec.isShutdown()) exec.shutdown();
                                             }
                                             return 1;
                                         })))
