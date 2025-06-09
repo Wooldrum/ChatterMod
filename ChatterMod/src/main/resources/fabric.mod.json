@@ -1,21 +1,28 @@
+// File: src/main/resources/fabric.mod.json
+
 {
   "schemaVersion": 1,
   "id": "chattermod",
   "version": "${version}",
+
   "name": "ChatterMod",
-  "description": "Client-side Fabric mod by Wooldrum — shows YouTube live chat in Minecraft chat.",
+  "description": "Client-side Fabric mod by Wooldrum that fetches YouTube Live Chat and displays it in Minecraft chat.",
   "authors": ["Wooldrum"],
+
+  "contact": {
+    "homepage": "https://github.com/Wooldrum/ChatterMod",
+    "sources": "https://github.com/Wooldrum/ChatterMod"
+  },
+
   "license": "MIT",
   "environment": "client",
+
   "entrypoints": {
     "client": [
       "com.wooldrum.chattermod.ChatterMod"
     ]
   },
-  "contact": {
-    "homepage": "https://github.com/Wooldrum/ChatterMod",
-    "sources": "https://github.com/Wooldrum/ChatterMod"
-  },
+
   "depends": {
     "fabricloader": ">=0.16.10",
     "fabric": "*",
