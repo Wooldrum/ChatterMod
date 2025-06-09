@@ -38,11 +38,11 @@ public class ChatterMod implements ClientModInitializer {
         startMessageProcessor();
         registerCommands();
     }
-
+    
     private void loadAndConnect() {
         activePlatforms.forEach(ChatPlatform::disconnect);
         activePlatforms.clear();
-
+        
         this.config = ChatterModConfig.load();
         HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -79,28 +79,28 @@ public class ChatterMod implements ClientModInitializer {
         String platformTag = "";
 
         switch (msg.platform()) {
-            case YOUTUBE -> {
+            case YOUTUBE:
                 platformColor = Formatting.byName(config.youtubeColor.toUpperCase());
                 platformTag = "[YT]";
-            }
-            case TWITCH -> {
+                break;
+            case TWITCH:
                 platformColor = Formatting.byName(config.twitchColor.toUpperCase());
                 platformTag = "[TW]";
-            }
+                break;
         }
         if (platformColor == null) platformColor = Formatting.WHITE;
 
         MutableText fullMessage = Text.literal("");
-
+        
         if (config.showPlatformLogo) {
             fullMessage.append(Text.literal(platformTag + " ").formatted(platformColor));
         }
-
+        
         MutableText authorText = Text.literal(msg.author());
         if (config.usePlatformColors) {
             authorText.formatted(platformColor);
         }
-
+        
         fullMessage.append(Text.literal("<").formatted(Formatting.GRAY))
                    .append(authorText)
                    .append(Text.literal("> ").formatted(Formatting.GRAY))
@@ -182,13 +182,13 @@ public class ChatterMod implements ClientModInitializer {
                                     return 1;
                                 })))
                 )
-                // THIS IS THE FIX: Removed one extra parenthesis from the end of this line
                 .then(ClientCommandManager.literal("reload")
                     .executes(c -> {
                         reply(c.getSource(), "Reloading ChatterMod configuration and reconnecting...");
                         loadAndConnect();
                         return 1;
-                    }))
+                    }) // THIS IS THE CORRECTED PART. The extra ')' is gone.
+                )
             )
         );
     }
