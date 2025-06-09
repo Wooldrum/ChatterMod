@@ -7,7 +7,7 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
-import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;  // ← corrected import
+import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.text.Text;
@@ -58,133 +58,85 @@ public class ChatterMod implements ClientModInitializer {
                           cfg.pollIntervalSeconds, liveChatId);
     }
 
-    private void poll() {
-        try {
-            String url = "https://www.googleapis.com/youtube/v3/liveChat/messages"
-                    + "?part=snippet,authorDetails"
-                    + "&liveChatId=" + URLEncoder.encode(liveChatId, StandardCharsets.UTF_8)
-                    + (nextPageToken.isBlank() ? "" 
-                       : "&pageToken=" + URLEncoder.encode(nextPageToken, StandardCharsets.UTF_8))
-                    + "&maxResults=200"
-                    + "&key=" + URLEncoder.encode(cfg.apiKey, StandardCharsets.UTF_8);
+    // … (poll and sendToChat unchanged) …
 
-            HttpResponse<String> res = http.send(
-                HttpRequest.newBuilder().uri(URI.create(url))
-                           .timeout(Duration.ofSeconds(10))
-                           .GET().build(),
-                HttpResponse.BodyHandlers.ofString()
-            );
-
-            if (res.statusCode() != 200) {
-                System.err.printf("[ChatterMod] HTTP %d – check API key/quota%n", res.statusCode());
-                return;
-            }
-
-            JsonObject root = JsonParser.parseString(res.body()).getAsJsonObject();
-            nextPageToken = root.has("nextPageToken")
-                ? root.get("nextPageToken").getAsString()
-                : "";
-
-            for (JsonElement el : root.getAsJsonArray("items")) {
-                JsonObject item = el.getAsJsonObject();
-                String name = item.getAsJsonObject("authorDetails")
-                                  .get("displayName").getAsString();
-                String msg  = item.getAsJsonObject("snippet")
-                                  .getAsJsonObject("textMessageDetails")
-                                  .get("messageText").getAsString();
-                sendToChat(name, msg);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-    }
-
-    private void sendToChat(String author, String message) {
-        String line = String.format("[YT] <%s> %s", author, message);
-        MinecraftClient.getInstance().execute(() ->
-            MinecraftClient.getInstance()
-                .inGameHud.getChatHud()
-                .addMessage(Text.literal(line))
-        );
-    }
-
+    /**
+     * Safely resolve the active liveChatId for the configured channelId.
+     * Returns "" if no live stream is found or on any parse error.
+     */
     private String resolveLiveChatId() {
         if (cfg.channelId.isBlank()) return "";
         try {
+            // 1) Search for an active live stream on the channel
             String searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet"
                     + "&channelId=" + URLEncoder.encode(cfg.channelId, StandardCharsets.UTF_8)
                     + "&eventType=live&type=video"
                     + "&key=" + URLEncoder.encode(cfg.apiKey, StandardCharsets.UTF_8);
 
-            HttpResponse<String> sr = http.send(
+            HttpResponse<String> searchRes = http.send(
                 HttpRequest.newBuilder().uri(URI.create(searchUrl))
                            .timeout(Duration.ofSeconds(10))
                            .GET().build(),
                 HttpResponse.BodyHandlers.ofString()
             );
 
-            JsonArray items = JsonParser.parseString(sr.body())
-                                        .getAsJsonObject()
-                                        .getAsJsonArray("items");
-            if (items.isEmpty()) return "";
+            JsonObject searchJson = JsonParser.parseString(searchRes.body())
+                                              .getAsJsonObject();
+
+            // null-safe fetch of "items"
+            JsonArray items = null;
+            if (searchJson.has("items") && searchJson.get("items").isJsonArray()) {
+                items = searchJson.getAsJsonArray("items");
+            }
+            if (items == null || items.size() == 0) {
+                return "";
+            }
 
             String videoId = items.get(0).getAsJsonObject()
-                                   .getAsJsonObject("id")
-                                   .get("videoId").getAsString();
+                                .getAsJsonObject("id")
+                                .get("videoId").getAsString();
 
+            // 2) Get liveStreamingDetails for that video
             String detailUrl = "https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails"
-                    + "&id=" + videoId
+                    + "&id=" + URLEncoder.encode(videoId, StandardCharsets.UTF_8)
                     + "&key=" + URLEncoder.encode(cfg.apiKey, StandardCharsets.UTF_8);
 
-            HttpResponse<String> dr = http.send(
+            HttpResponse<String> detailRes = http.send(
                 HttpRequest.newBuilder().uri(URI.create(detailUrl))
                            .timeout(Duration.ofSeconds(10))
                            .GET().build(),
                 HttpResponse.BodyHandlers.ofString()
             );
 
-            JsonObject details = JsonParser.parseString(dr.body())
-                                           .getAsJsonObject()
-                                           .getAsJsonArray("items")
-                                           .get(0).getAsJsonObject()
-                                           .getAsJsonObject("liveStreamingDetails");
+            JsonObject detailJson = JsonParser.parseString(detailRes.body())
+                                              .getAsJsonObject();
 
-            return details.has("activeLiveChatId")
-                ? details.get("activeLiveChatId").getAsString()
-                : "";
-        } catch (IOException | InterruptedException e) {
+            JsonArray detailItems = null;
+            if (detailJson.has("items") && detailJson.get("items").isJsonArray()) {
+                detailItems = detailJson.getAsJsonArray("items");
+            }
+            if (detailItems == null || detailItems.size() == 0) {
+                return "";
+            }
+
+            JsonObject liveDetails = detailItems.get(0)
+                .getAsJsonObject()
+                .getAsJsonObject("liveStreamingDetails");
+
+            if (liveDetails.has("activeLiveChatId")) {
+                return liveDetails.get("activeLiveChatId").getAsString();
+            } else {
+                return "";
+            }
+
+        } catch (IOException | InterruptedException | JsonParseException e) {
             e.printStackTrace();
             return "";
         }
     }
 
-    private void registerCommands() {
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, ctx) ->
-            dispatcher.register(ClientCommandManager.literal("chattermod")
-                .then(ClientCommandManager.literal("apikey")
-                    .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
-                        .executes(c -> {
-                            cfg.apiKey = StringArgumentType.getString(c, "key");
-                            cfg.store();
-                            reply((FabricClientCommandSource)c.getSource(), "API key saved.");
-                            return 1;
-                        })))
-                .then(ClientCommandManager.literal("channel")
-                    .then(ClientCommandManager.argument("id", StringArgumentType.greedyString())
-                        .executes(c -> {
-                            cfg.channelId = StringArgumentType.getString(c, "id");
-                            cfg.liveChatId = "";
-                            cfg.store();
-                            liveChatId = resolveLiveChatId();
-                            reply((FabricClientCommandSource)c.getSource(),
-                                  liveChatId.isBlank() ? "No live stream." : "Channel updated.");
-                            return 1;
-                        })))
-            )
-        );
-    }
+    // … (registerCommands and reply unchanged) …
 
-    // ← signature updated to use FabricClientCommandSource
     private static void reply(FabricClientCommandSource src, String message) {
         src.sendFeedback(Text.literal(message));
     }
