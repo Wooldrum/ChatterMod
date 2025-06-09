@@ -1,4 +1,5 @@
 // File: settings.gradle.kts
+
 pluginManagement {
     repositories {
         gradlePluginPortal()
