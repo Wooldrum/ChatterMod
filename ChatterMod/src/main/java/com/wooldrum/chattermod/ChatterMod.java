@@ -1,7 +1,8 @@
 package com.wooldrum.chattermod;
 
-import com.google.gson.*;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
+import com.wooldrum.chattermod.platform.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -9,208 +10,204 @@ import net.fabricmc.fabric.api.client.command.v2.ClientCommandManager;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.FabricClientCommandSource;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
+import net.minecraft.util.Formatting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.IOException;
-import java.net.URI;
-import java.net.URLEncoder;
-import java.net.http.*;
-import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.util.concurrent.*;
+import java.net.http.HttpClient;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
 
 @Environment(EnvType.CLIENT)
 public class ChatterMod implements ClientModInitializer {
 
     public static final Logger LOGGER = LoggerFactory.getLogger("ChatterMod");
 
-    private ChatterModConfig cfg;
-    private HttpClient http;
-    private ScheduledExecutorService exec;
-    private String liveChatId = "";
-    private String nextPageToken = "";
+    private ChatterModConfig config;
+    private final List<ChatPlatform> activePlatforms = new ArrayList<>();
+    private final BlockingQueue<ChatMessage> messageQueue = new LinkedBlockingQueue<>();
+    private Thread messageProcessorThread;
 
     @Override
     public void onInitializeClient() {
-        LOGGER.info("Initializing ChatterMod by Wooldrum...");
-
-        cfg = ChatterModConfig.load();
-        http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
-
-        liveChatId = cfg.liveChatId.isBlank() ? resolveLiveChatId() : cfg.liveChatId;
-
-        if (liveChatId.isBlank()) {
-            LOGGER.warn("Could not find an active livestream. Mod is idle. Use '/chattermod' to set credentials.");
-            registerCommands(); // Still register commands so user can set credentials
-            return;
-        }
-
-        startPolling();
+        LOGGER.info("Initializing ChatterMod BETA 1.0...");
+        loadAndConnect();
+        startMessageProcessor();
         registerCommands();
     }
 
-    private void startPolling() {
-        if (exec != null && !exec.isShutdown()) {
-            exec.shutdownNow();
+    private void loadAndConnect() {
+        activePlatforms.forEach(ChatPlatform::disconnect);
+        activePlatforms.clear();
+
+        this.config = ChatterModConfig.load();
+        HttpClient httpClient = HttpClient.newHttpClient();
+
+        if (!config.youtubeAccounts.isEmpty()) {
+            activePlatforms.add(new YouTubePlatform(config.youtubeAccounts.get(0), httpClient));
         }
-        exec = Executors.newSingleThreadScheduledExecutor(r -> {
-            Thread t = new Thread(r, "ChatterMod-Poller");
-            t.setDaemon(true);
-            return t;
-        });
-        exec.scheduleAtFixedRate(this::poll, 0, cfg.pollIntervalSeconds, TimeUnit.SECONDS);
-        LOGGER.info("✔ Polling started every {} seconds (liveChatId={})", cfg.pollIntervalSeconds, liveChatId);
+        if (!config.twitchAccounts.isEmpty()) {
+            activePlatforms.add(new TwitchPlatform(config.twitchAccounts.get(0)));
+        }
+
+        for (ChatPlatform platform : activePlatforms) {
+            platform.onMessage(messageQueue::add);
+            platform.connect();
+        }
     }
 
-    private void poll() {
-        // Method implementation remains the same...
-        if (liveChatId.isBlank()) return;
-        try {
-            String url = "https://www.googleapis.com/youtube/v3/liveChat/messages"
-                    + "?part=snippet,authorDetails"
-                    + "&liveChatId=" + URLEncoder.encode(liveChatId, StandardCharsets.UTF_8)
-                    + (nextPageToken.isBlank() ? "" : "&pageToken=" + URLEncoder.encode(nextPageToken, StandardCharsets.UTF_8))
-                    + "&maxResults=200"
-                    + "&key=" + URLEncoder.encode(cfg.apiKey, StandardCharsets.UTF_8);
-
-            HttpRequest req = HttpRequest.newBuilder().uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(10)).GET().build();
-            HttpResponse<String> res = http.send(req, HttpResponse.BodyHandlers.ofString());
-
-            if (res.statusCode() != 200) {
-                LOGGER.error("HTTP {} – check API key/quota. Polling stopped.", res.statusCode());
-                if (exec != null) exec.shutdown();
-                return;
-            }
-
-            JsonObject root = JsonParser.parseString(res.body()).getAsJsonObject();
-            nextPageToken = root.has("nextPageToken") ? root.get("nextPageToken").getAsString() : "";
-
-            for (JsonElement el : root.getAsJsonArray("items")) {
-                JsonObject item = el.getAsJsonObject();
-                if (item.getAsJsonObject("snippet").get("type").getAsString().equals("textMessageEvent")) {
-                    String name = item.getAsJsonObject("authorDetails").get("displayName").getAsString();
-                    String msg = item.getAsJsonObject("snippet")
-                            .getAsJsonObject("textMessageDetails")
-                            .get("messageText").getAsString();
-                    sendToMcChat(name, msg);
+    private void startMessageProcessor() {
+        messageProcessorThread = new Thread(() -> {
+            try {
+                while (!Thread.currentThread().isInterrupted()) {
+                    displayInMinecraftChat(messageQueue.take());
                 }
+            } catch (InterruptedException e) {
+                LOGGER.info("Chat message processor thread interrupted.");
             }
-        } catch (Exception e) {
-            LOGGER.error("An error occurred during polling", e);
-            if (exec != null) exec.shutdown();
-        }
+        });
+        messageProcessorThread.setDaemon(true);
+        messageProcessorThread.setName("ChatterMod-Message-Processor");
+        messageProcessorThread.start();
     }
 
-    private void sendToMcChat(String author, String msg) {
-        String line = String.format("[YT] <%s> %s", author, msg);
-        MinecraftClient.getInstance().execute(() ->
-                MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(Text.literal(line))
-        );
+    private void displayInMinecraftChat(ChatMessage msg) {
+        Formatting platformColor = Formatting.WHITE;
+        String platformTag = "";
+
+        switch (msg.platform()) {
+            case YOUTUBE:
+                platformColor = Formatting.byName(config.youtubeColor.toUpperCase());
+                platformTag = "[YT]";
+                break;
+            case TWITCH:
+                platformColor = Formatting.byName(config.twitchColor.toUpperCase());
+                platformTag = "[TW]";
+                break;
+        }
+        if (platformColor == null) platformColor = Formatting.WHITE;
+
+        MutableText fullMessage = Text.literal("");
+
+        if (config.showPlatformLogo) {
+            fullMessage.append(Text.literal(platformTag + " ").formatted(platformColor));
+        }
+
+        MutableText authorText = Text.literal(msg.author());
+        if (config.usePlatformColors) {
+            authorText.formatted(platformColor);
+        }
+
+        fullMessage.append(Text.literal("<").formatted(Formatting.GRAY))
+                .append(authorText)
+                .append(Text.literal("> ").formatted(Formatting.GRAY))
+                .append(Text.literal(msg.message()).formatted(Formatting.WHITE));
+
+        MinecraftClient.getInstance().execute(() -> {
+            if (MinecraftClient.getInstance().inGameHud != null) {
+                MinecraftClient.getInstance().inGameHud.getChatHud().addMessage(fullMessage);
+            }
+        });
     }
 
-    private String resolveLiveChatId() {
-        if (cfg.channelId.isBlank() || cfg.apiKey.isBlank() || cfg.apiKey.equals("YOUR_API_KEY_HERE")) {
-            LOGGER.warn("Cannot resolve live chat ID: API key or Channel ID is missing/default.");
-            return "";
-        }
-        try {
-            LOGGER.info("Attempting to resolve liveChatId for channel: {}", cfg.channelId);
-
-            // --- First API Call: Search for the live video ---
-            String searchUrl = "https://www.googleapis.com/youtube/v3/search?part=snippet"
-                    + "&channelId=" + URLEncoder.encode(cfg.channelId, StandardCharsets.UTF_8)
-                    + "&eventType=live&type=video"
-                    + "&key=" + URLEncoder.encode(cfg.apiKey, StandardCharsets.UTF_8);
-
-            HttpRequest searchReq = HttpRequest.newBuilder().uri(URI.create(searchUrl))
-                    .timeout(Duration.ofSeconds(10)).GET().build();
-            HttpResponse<String> searchRes = http.send(searchReq, HttpResponse.BodyHandlers.ofString());
-
-            // FIX: Check for HTTP errors before parsing JSON
-            if (searchRes.statusCode() != 200) {
-                LOGGER.error("YouTube API error during search: HTTP {} - {}", searchRes.statusCode(), searchRes.body());
-                return "";
-            }
-
-            JsonObject searchRoot = JsonParser.parseString(searchRes.body()).getAsJsonObject();
-
-            // FIX: Check that the "items" array exists before trying to use it
-            if (!searchRoot.has("items")) {
-                LOGGER.error("YouTube API response did not contain 'items' array. Full response: {}", searchRes.body());
-                return "";
-            }
-
-            JsonArray items = searchRoot.getAsJsonArray("items");
-            if (items.isEmpty()) {
-                LOGGER.warn("No active live broadcast found for the channel.");
-                return "";
-            }
-
-            String videoId = items.get(0).getAsJsonObject().getAsJsonObject("id").get("videoId").getAsString();
-
-            // --- Second API Call: Get video details ---
-            String detailUrl = "https://www.googleapis.com/youtube/v3/videos?part=liveStreamingDetails"
-                    + "&id=" + videoId + "&key=" + URLEncoder.encode(cfg.apiKey, StandardCharsets.UTF_8);
-
-            HttpRequest detailReq = HttpRequest.newBuilder().uri(URI.create(detailUrl))
-                    .timeout(Duration.ofSeconds(10)).GET().build();
-            HttpResponse<String> detailRes = http.send(detailReq, HttpResponse.BodyHandlers.ofString());
-
-            // FIX: Add same error checking for the second call
-            if (detailRes.statusCode() != 200) {
-                LOGGER.error("YouTube API error during video details fetch: HTTP {} - {}", detailRes.statusCode(), detailRes.body());
-                return "";
-            }
-
-            JsonObject detailRoot = JsonParser.parseString(detailRes.body()).getAsJsonObject();
-            if (!detailRoot.has("items") || detailRoot.getAsJsonArray("items").isEmpty()) {
-                LOGGER.error("Could not get video details for videoId '{}'. Response: {}", videoId, detailRes.body());
-                return "";
-            }
-
-            JsonObject details = detailRoot.getAsJsonArray("items").get(0).getAsJsonObject()
-                    .getAsJsonObject("liveStreamingDetails");
-
-            return details.has("activeLiveChatId") ? details.get("activeLiveChatId").getAsString() : "";
-
-        } catch (Exception e) {
-            LOGGER.error("Failed to resolve Live Chat ID from channel", e);
-            return "";
-        }
-    }
-
+    // --- REWRITTEN COMMAND REGISTRATION ---
     private void registerCommands() {
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
-                dispatcher.register(ClientCommandManager.literal("chattermod")
-                        .then(ClientCommandManager.literal("apikey")
-                                .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
-                                        .executes(c -> {
-                                            cfg.apiKey = StringArgumentType.getString(c, "key");
-                                            cfg.store();
-                                            reply(c.getSource(), "API key saved.");
-                                            return 1;
-                                        })))
-                        .then(ClientCommandManager.literal("channel")
-                                .then(ClientCommandManager.argument("id", StringArgumentType.greedyString())
-                                        .executes(c -> {
-                                            cfg.channelId = StringArgumentType.getString(c, "id");
-                                            cfg.liveChatId = ""; // Clear direct ID to force re-lookup
-                                            cfg.store();
-                                            liveChatId = resolveLiveChatId();
-                                            if (!liveChatId.isBlank()) {
-                                                reply(c.getSource(), "Channel updated. Restarting poll...");
-                                                startPolling();
-                                            } else {
-                                                reply(c.getSource(), "Channel updated, but no active livestream found.");
-                                                if(exec != null && !exec.isShutdown()) exec.shutdown();
-                                            }
-                                            return 1;
-                                        })))
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            // Create the main command builder
+            LiteralArgumentBuilder<FabricClientCommandSource> chattermodNode = ClientCommandManager.literal("chattermod");
+
+            // --- Build subcommands individually ---
+
+            // /chattermod toggle
+            chattermodNode.then(ClientCommandManager.literal("toggle")
+                .then(ClientCommandManager.literal("logos")
+                    .executes(c -> {
+                        config.showPlatformLogo = !config.showPlatformLogo;
+                        config.save();
+                        reply(c.getSource(), "Platform logos " + (config.showPlatformLogo ? "enabled." : "disabled."));
+                        return 1;
+                    }))
+                .then(ClientCommandManager.literal("colors")
+                    .executes(c -> {
+                        config.usePlatformColors = !config.usePlatformColors;
+                        config.save();
+                        reply(c.getSource(), "Platform colors " + (config.usePlatformColors ? "enabled." : "disabled."));
+                        return 1;
+                    }))
+            );
+
+            // /chattermod youtube
+            chattermodNode.then(ClientCommandManager.literal("youtube")
+                .then(ClientCommandManager.literal("set")
+                    .then(ClientCommandManager.literal("apikey")
+                        .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
+                            .executes(c -> {
+                                String key = StringArgumentType.getString(c, "key");
+                                String channelId = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).channelId();
+                                config.youtubeAccounts.clear();
+                                config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(channelId, key));
+                                config.save();
+                                reply(c.getSource(), "YouTube API Key set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
+                    .then(ClientCommandManager.literal("channel")
+                        .then(ClientCommandManager.argument("id", StringArgumentType.string())
+                            .executes(c -> {
+                                String id = StringArgumentType.getString(c, "id");
+                                String apiKey = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).apiKey();
+                                config.youtubeAccounts.clear();
+                                config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(id, apiKey));
+                                config.save();
+                                reply(c.getSource(), "YouTube Channel ID set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
                 )
-        );
+            );
+
+            // /chattermod twitch
+            chattermodNode.then(ClientCommandManager.literal("twitch")
+                .then(ClientCommandManager.literal("set")
+                    .then(ClientCommandManager.literal("channel")
+                        .then(ClientCommandManager.argument("name", StringArgumentType.string())
+                            .executes(c -> {
+                                String name = StringArgumentType.getString(c, "name");
+                                String token = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).oauthToken();
+                                config.twitchAccounts.clear();
+                                config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
+                                config.save();
+                                reply(c.getSource(), "Twitch channel name set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
+                    .then(ClientCommandManager.literal("token")
+                        .then(ClientCommandManager.argument("token", StringArgumentType.greedyString())
+                            .executes(c -> {
+                                String token = StringArgumentType.getString(c, "token");
+                                String name = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).channelName();
+                                config.twitchAccounts.clear();
+                                config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
+                                config.save();
+                                reply(c.getSource(), "Twitch OAuth token set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
+                )
+            );
+
+            // /chattermod reload
+            chattermodNode.then(ClientCommandManager.literal("reload")
+                .executes(c -> {
+                    reply(c.getSource(), "Reloading ChatterMod configuration and reconnecting...");
+                    loadAndConnect();
+                    return 1;
+                })
+            );
+
+            // Register the fully built command tree
+            dispatcher.register(chattermodNode);
+        });
     }
 
     private static void reply(FabricClientCommandSource src, String message) {

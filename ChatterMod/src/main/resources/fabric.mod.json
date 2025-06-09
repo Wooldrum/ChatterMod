@@ -3,7 +3,7 @@
   "id": "chattermod",
   "version": "${version}",
   "name": "ChatterMod",
-  "description": "Client-side Fabric mod by Wooldrum that shows YouTube live-chat in Minecraft chat.",
+  "description": "Displays YouTube and Twitch chat in-game for dual streaming. Client-side and server-safe.",
   "authors": [
     "Wooldrum"
   ],
