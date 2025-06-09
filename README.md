@@ -14,7 +14,7 @@ NOTE: PLEASE READ BELOW TO LEARN HOW TO PUT IN API KEYS!
 
 -  Client-Side & Server-Safe: ChatterMod runs entirely on your client. It does not require any server-side installation and is safe to use on any public or private server.
 
- **How to Install**
+ **How to Install:**
 
 -     Make sure you have Fabric Loader and Fabric API for Minecraft 1.21.5 installed.
 
@@ -35,12 +35,12 @@ You can configure everything using in-game commands. The mod will generate a con
     /chattermod toggle colors - Turns the custom author name colors on or off.
     /chattermod reload - Reloads all settings and reconnects to the chat servers. Use this after changing your credentials.
 
-YouTube Setup:
+**YouTube Setup:**
 
     /chattermod youtube set apikey <your-youtube-api-key>
     /chattermod youtube set channel <your-youtube-channel-id>
      To get your YouTube API Key: Visit https://developers.google.com/youtube/v3/getting-started, log in, and copy the entire token.
-Twitch Setup:
+**Twitch Setup:**
 
     /chattermod twitch set channel <your-twitch-username>
     /chattermod twitch set token <your-oauth-token>
@@ -48,7 +48,7 @@ Twitch Setup:
 
 After setting your credentials, run /chattermod reload to connect!
 
-**Manual Configuration (Optional)**
+**Manual Configuration (Optional):**
 
 For reference, here is what the config/chattermod.properties file looks like. It will be generated automatically in your .minecraft/config/ folder.
 
@@ -63,7 +63,7 @@ youtube.1.apiKey=YOUR_API_KEY_HERE
 twitch.1.channelName=your_twitch_channel_name
 twitch.1.oauthToken=YOUR_OAUTH_TOKEN_HERE
 
-**Beta Notes**
+**Beta Notes:**
 
-    _This is a beta release, so bugs may be present. Please report any issues you find!
-    The next major planned feature is a full in-game configuration screen via Mod Menu, which will replace the need for most commands._
+    This is a beta release, so bugs may be present. Please report any issues you find!
+    The next major planned feature is a full in-game configuration screen via Mod Menu, which will replace the need for most commands.
