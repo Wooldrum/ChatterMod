@@ -1,6 +1,7 @@
 package com.wooldrum.chattermod;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.wooldrum.chattermod.platform.*;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.api.EnvType;
@@ -38,11 +39,11 @@ public class ChatterMod implements ClientModInitializer {
         startMessageProcessor();
         registerCommands();
     }
-    
+
     private void loadAndConnect() {
         activePlatforms.forEach(ChatPlatform::disconnect);
         activePlatforms.clear();
-        
+
         this.config = ChatterModConfig.load();
         HttpClient httpClient = HttpClient.newHttpClient();
 
@@ -91,20 +92,20 @@ public class ChatterMod implements ClientModInitializer {
         if (platformColor == null) platformColor = Formatting.WHITE;
 
         MutableText fullMessage = Text.literal("");
-        
+
         if (config.showPlatformLogo) {
             fullMessage.append(Text.literal(platformTag + " ").formatted(platformColor));
         }
-        
+
         MutableText authorText = Text.literal(msg.author());
         if (config.usePlatformColors) {
             authorText.formatted(platformColor);
         }
-        
+
         fullMessage.append(Text.literal("<").formatted(Formatting.GRAY))
-                   .append(authorText)
-                   .append(Text.literal("> ").formatted(Formatting.GRAY))
-                   .append(Text.literal(msg.message()).formatted(Formatting.WHITE));
+                .append(authorText)
+                .append(Text.literal("> ").formatted(Formatting.GRAY))
+                .append(Text.literal(msg.message()).formatted(Formatting.WHITE));
 
         MinecraftClient.getInstance().execute(() -> {
             if (MinecraftClient.getInstance().inGameHud != null) {
@@ -113,84 +114,100 @@ public class ChatterMod implements ClientModInitializer {
         });
     }
 
+    // --- REWRITTEN COMMAND REGISTRATION ---
     private void registerCommands() {
-        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) ->
-            dispatcher.register(ClientCommandManager.literal("chattermod")
-                .then(ClientCommandManager.literal("toggle")
-                    .then(ClientCommandManager.literal("logos")
-                        .executes(c -> {
-                            config.showPlatformLogo = !config.showPlatformLogo;
-                            config.save();
-                            reply(c.getSource(), "Platform logos " + (config.showPlatformLogo ? "enabled." : "disabled."));
-                            return 1;
-                        }))
-                    .then(ClientCommandManager.literal("colors")
-                        .executes(c -> {
-                            config.usePlatformColors = !config.usePlatformColors;
-                            config.save();
-                            reply(c.getSource(), "Platform colors " + (config.usePlatformColors ? "enabled." : "disabled."));
-                            return 1;
-                        }))
-                )
-                .then(ClientCommandManager.literal("youtube")
-                    .then(ClientCommandManager.literal("set")
-                        .then(ClientCommandManager.literal("apikey")
-                            .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
-                                .executes(c -> {
-                                    String key = StringArgumentType.getString(c, "key");
-                                    String channelId = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).channelId();
-                                    config.youtubeAccounts.clear();
-                                    config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(channelId, key));
-                                    config.save();
-                                    reply(c.getSource(), "YouTube API Key set. Use /chattermod reload to apply.");
-                                    return 1;
-                                })))
-                        .then(ClientCommandManager.literal("channel")
-                            .then(ClientCommandManager.argument("id", StringArgumentType.string())
-                                .executes(c -> {
-                                    String id = StringArgumentType.getString(c, "id");
-                                    String apiKey = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).apiKey();
-                                    config.youtubeAccounts.clear();
-                                    config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(id, apiKey));
-                                    config.save();
-                                    reply(c.getSource(), "YouTube Channel ID set. Use /chattermod reload to apply.");
-                                    return 1;
-                                })))
-                )
-                .then(ClientCommandManager.literal("twitch")
-                    .then(ClientCommandManager.literal("set")
-                        .then(ClientCommandManager.literal("channel")
-                            .then(ClientCommandManager.argument("name", StringArgumentType.string())
-                                .executes(c -> {
-                                    String name = StringArgumentType.getString(c, "name");
-                                    String token = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).oauthToken();
-                                    config.twitchAccounts.clear();
-                                    config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
-                                    config.save();
-                                    reply(c.getSource(), "Twitch channel name set. Use /chattermod reload to apply.");
-                                    return 1;
-                                })))
-                        .then(ClientCommandManager.literal("token")
-                            .then(ClientCommandManager.argument("token", StringArgumentType.greedyString())
-                                .executes(c -> {
-                                    String token = StringArgumentType.getString(c, "token");
-                                    String name = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).channelName();
-                                    config.twitchAccounts.clear();
-                                    config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
-                                    config.save();
-                                    reply(c.getSource(), "Twitch OAuth token set. Use /chattermod reload to apply.");
-                                    return 1;
-                                })))
-                )
-                .then(ClientCommandManager.literal("reload")
+        ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
+            // Create the main command builder
+            LiteralArgumentBuilder<FabricClientCommandSource> chattermodNode = ClientCommandManager.literal("chattermod");
+
+            // --- Build subcommands individually ---
+
+            // /chattermod toggle
+            chattermodNode.then(ClientCommandManager.literal("toggle")
+                .then(ClientCommandManager.literal("logos")
                     .executes(c -> {
-                        reply(c.getSource(), "Reloading ChatterMod configuration and reconnecting...");
-                        loadAndConnect();
+                        config.showPlatformLogo = !config.showPlatformLogo;
+                        config.save();
+                        reply(c.getSource(), "Platform logos " + (config.showPlatformLogo ? "enabled." : "disabled."));
                         return 1;
-                    }) // THIS IS THE CORRECTED PART. The extra ')' is gone.
+                    }))
+                .then(ClientCommandManager.literal("colors")
+                    .executes(c -> {
+                        config.usePlatformColors = !config.usePlatformColors;
+                        config.save();
+                        reply(c.getSource(), "Platform colors " + (config.usePlatformColors ? "enabled." : "disabled."));
+                        return 1;
+                    }))
+            );
+
+            // /chattermod youtube
+            chattermodNode.then(ClientCommandManager.literal("youtube")
+                .then(ClientCommandManager.literal("set")
+                    .then(ClientCommandManager.literal("apikey")
+                        .then(ClientCommandManager.argument("key", StringArgumentType.greedyString())
+                            .executes(c -> {
+                                String key = StringArgumentType.getString(c, "key");
+                                String channelId = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).channelId();
+                                config.youtubeAccounts.clear();
+                                config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(channelId, key));
+                                config.save();
+                                reply(c.getSource(), "YouTube API Key set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
+                    .then(ClientCommandManager.literal("channel")
+                        .then(ClientCommandManager.argument("id", StringArgumentType.string())
+                            .executes(c -> {
+                                String id = StringArgumentType.getString(c, "id");
+                                String apiKey = config.youtubeAccounts.isEmpty() ? "" : config.youtubeAccounts.get(0).apiKey();
+                                config.youtubeAccounts.clear();
+                                config.youtubeAccounts.add(new ChatterModConfig.YouTubeAccount(id, apiKey));
+                                config.save();
+                                reply(c.getSource(), "YouTube Channel ID set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
                 )
-            )
-        );
+            );
+
+            // /chattermod twitch
+            chattermodNode.then(ClientCommandManager.literal("twitch")
+                .then(ClientCommandManager.literal("set")
+                    .then(ClientCommandManager.literal("channel")
+                        .then(ClientCommandManager.argument("name", StringArgumentType.string())
+                            .executes(c -> {
+                                String name = StringArgumentType.getString(c, "name");
+                                String token = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).oauthToken();
+                                config.twitchAccounts.clear();
+                                config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
+                                config.save();
+                                reply(c.getSource(), "Twitch channel name set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
+                    .then(ClientCommandManager.literal("token")
+                        .then(ClientCommandManager.argument("token", StringArgumentType.greedyString())
+                            .executes(c -> {
+                                String token = StringArgumentType.getString(c, "token");
+                                String name = config.twitchAccounts.isEmpty() ? "" : config.twitchAccounts.get(0).channelName();
+                                config.twitchAccounts.clear();
+                                config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
+                                config.save();
+                                reply(c.getSource(), "Twitch OAuth token set. Use /chattermod reload to apply.");
+                                return 1;
+                            })))
+                )
+            );
+
+            // /chattermod reload
+            chattermodNode.then(ClientCommandManager.literal("reload")
+                .executes(c -> {
+                    reply(c.getSource(), "Reloading ChatterMod configuration and reconnecting...");
+                    loadAndConnect();
+                    return 1;
+                })
+            );
+
+            // Register the fully built command tree
+            dispatcher.register(chattermodNode);
+        });
     }
 
     private static void reply(FabricClientCommandSource src, String message) {
