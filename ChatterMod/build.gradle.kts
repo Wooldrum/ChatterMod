@@ -12,12 +12,12 @@ val gson_version = "2.10.1"
 val twitch4j_version = "1.20.0"
 
 group = "com.wooldrum"
-version = "2.5.0" // Version bump for YouTube + Twitch
+version = "2.5.0"
 
 repositories {
     mavenCentral()
     maven { url = uri("https://maven.fabricmc.net/") }
-    maven { url = uri("https://jitpack.io") } // Still needed for Twitch4J
+    maven { url = uri("https://jitpack.io") }
 }
 
 dependencies {
@@ -29,12 +29,10 @@ dependencies {
 
     implementation("com.google.code.gson:gson:$gson_version")
 
-    // Twitch4J for Twitch Integration
     implementation("com.github.twitch4j:twitch4j-chat:$twitch4j_version")
     implementation("com.github.twitch4j:twitch4j-auth:$twitch4j_version")
     implementation("com.github.twitch4j:twitch4j-common:$twitch4j_version")
 
-    // SLF4J is required by Twitch4J
     implementation("org.slf4j:slf4j-simple:2.0.13")
 }
 
@@ -50,9 +48,11 @@ tasks.processResources {
     }
 }
 
+// Enable Zip64 format for the large JAR file
 tasks.shadowJar {
     archiveClassifier.set("all")
     mergeServiceFiles()
+    isZip64 = true // <-- THIS IS THE FIX
 }
 
 tasks.build {
