@@ -1,88 +1,58 @@
-// File: src/main/java/com/wooldrum/chattermod/ChatterModConfig.java
 package com.wooldrum.chattermod;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.InputStream;
+import java.io.*;
 import java.util.Properties;
 
-/**
- * Loads config from config/chattermod.properties.
- * If missing, writes a template with placeholders.
- */
+/** Simple POJO + disk I/O for config/chattermod.properties */
 public class ChatterModConfig {
-    private static final String CONFIG_DIR  = "config";
-    private static final String CONFIG_FILE = "chattermod.properties";
+    private static final File FILE =
+            new File("config", "chattermod.properties");
 
-    public String apiKey;
-    public String liveChatId;
-    public String channelId;
-    public int    pollIntervalSeconds;
+    public String apiKey        = "";
+    public String liveChatId    = "";
+    public String channelId     = "";
+    public int    pollIntervalSeconds = 5;
 
-    private ChatterModConfig(String apiKey, String liveChatId, String channelId, int pollIntervalSeconds) {
-        this.apiKey              = apiKey;
-        this.liveChatId          = liveChatId;
-        this.channelId           = channelId;
-        this.pollIntervalSeconds = pollIntervalSeconds;
-    }
-
+    /* load or create template */
     public static ChatterModConfig load() {
+        ChatterModConfig c = new ChatterModConfig();
         try {
-            File dir = new File(CONFIG_DIR);
-            if (!dir.exists()) dir.mkdirs();
+            FILE.getParentFile().mkdirs();
+            Properties p = new Properties();
 
-            File file = new File(dir, CONFIG_FILE);
-            if (!file.exists()) {
-                Properties defaults = new Properties();
-                defaults.setProperty("apiKey", "YOUR_API_KEY_HERE");
-                defaults.setProperty("liveChatId", "");
-                defaults.setProperty("channelId", "UCYOURCHANNELID_HERE");
-                defaults.setProperty("pollIntervalSeconds", "5");
-                try (var out = new java.io.FileOutputStream(file)) {
-                    defaults.store(out, "ChatterMod Configuration");
+            if (FILE.exists()) try (InputStream in = new FileInputStream(FILE)) {
+                p.load(in);
+            } else {
+                p.setProperty("apiKey", "YOUR_API_KEY_HERE");
+                p.setProperty("liveChatId", "");
+                p.setProperty("channelId", "UCYOURCHANNELID_HERE");
+                p.setProperty("pollIntervalSeconds", "5");
+                try (OutputStream out = new FileOutputStream(FILE)) {
+                    p.store(out, "ChatterMod configuration");
                 }
-                return new ChatterModConfig("YOUR_API_KEY_HERE", "", "UCYOURCHANNELID_HERE", 5);
             }
 
-            Properties props = new Properties();
-            try (InputStream in = new FileInputStream(file)) {
-                props.load(in);
-            }
+            c.apiKey              = p.getProperty("apiKey", "").trim();
+            c.liveChatId          = p.getProperty("liveChatId", "").trim();
+            c.channelId           = p.getProperty("channelId", "").trim();
+            c.pollIntervalSeconds =
+                    Integer.parseInt(p.getProperty("pollIntervalSeconds", "5").trim());
 
-            String apiKey = props.getProperty("apiKey", "").trim();
-            String liveChatId = props.getProperty("liveChatId", "").trim();
-            String channelId = props.getProperty("channelId", "").trim();
-            int interval;
-            try {
-                interval = Integer.parseInt(props.getProperty("pollIntervalSeconds", "5").trim());
-            } catch (NumberFormatException e) {
-                interval = 5;
-            }
-
-            return new ChatterModConfig(apiKey, liveChatId, channelId, interval);
-        } catch (Exception e) {
-            e.printStackTrace();
-            return new ChatterModConfig("", "", "", 5);
-        }
+        } catch (Exception e) { e.printStackTrace(); }
+        return c;
     }
 
-    /** Saves the current configuration back to the properties file. */
+    /* persist current fields */
     public void store() {
         try {
-            File dir = new File(CONFIG_DIR);
-            if (!dir.exists()) dir.mkdirs();
-
-            File file = new File(dir, CONFIG_FILE);
-            Properties props = new Properties();
-            props.setProperty("apiKey", apiKey);
-            props.setProperty("liveChatId", liveChatId);
-            props.setProperty("channelId", channelId);
-            props.setProperty("pollIntervalSeconds", Integer.toString(pollIntervalSeconds));
-            try (var out = new java.io.FileOutputStream(file)) {
-                props.store(out, "ChatterMod Configuration");
+            Properties p = new Properties();
+            p.setProperty("apiKey", apiKey);
+            p.setProperty("liveChatId", liveChatId);
+            p.setProperty("channelId", channelId);
+            p.setProperty("pollIntervalSeconds", String.valueOf(pollIntervalSeconds));
+            try (OutputStream out = new FileOutputStream(FILE)) {
+                p.store(out, "ChatterMod configuration");
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        } catch (IOException e) { e.printStackTrace(); }
     }
 }
