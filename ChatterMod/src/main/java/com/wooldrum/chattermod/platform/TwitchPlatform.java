@@ -35,7 +35,7 @@ public class TwitchPlatform implements ChatPlatform {
 
         twitchChat = TwitchChatBuilder.builder()
                 .withChatAccount(credential)
-                .withEnableMembershipEvents(false) // No need for join/part messages
+                .withEnableMembershipEvents(false)
                 .build();
 
         twitchChat.joinChannel(account.channelName());
