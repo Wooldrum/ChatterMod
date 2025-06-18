@@ -114,15 +114,10 @@ public class ChatterMod implements ClientModInitializer {
         });
     }
 
-    // --- REWRITTEN COMMAND REGISTRATION ---
     private void registerCommands() {
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, registryAccess) -> {
-            // Create the main command builder
             LiteralArgumentBuilder<FabricClientCommandSource> chattermodNode = ClientCommandManager.literal("chattermod");
 
-            // --- Build subcommands individually ---
-
-            // /chattermod toggle
             chattermodNode.then(ClientCommandManager.literal("toggle")
                 .then(ClientCommandManager.literal("logos")
                     .executes(c -> {
@@ -168,7 +163,6 @@ public class ChatterMod implements ClientModInitializer {
                 )
             );
 
-            // /chattermod twitch
             chattermodNode.then(ClientCommandManager.literal("twitch")
                 .then(ClientCommandManager.literal("set")
                     .then(ClientCommandManager.literal("channel")
@@ -191,12 +185,7 @@ public class ChatterMod implements ClientModInitializer {
                                 config.twitchAccounts.add(new ChatterModConfig.TwitchAccount(name, token));
                                 config.save();
                                 reply(c.getSource(), "Twitch OAuth token set. Use /chattermod reload to apply.");
-                                return 1;
-                            })))
-                )
-            );
-
-            // /chattermod reload
+                                
             chattermodNode.then(ClientCommandManager.literal("reload")
                 .executes(c -> {
                     reply(c.getSource(), "Reloading ChatterMod configuration and reconnecting...");
@@ -205,7 +194,6 @@ public class ChatterMod implements ClientModInitializer {
                 })
             );
 
-            // Register the fully built command tree
             dispatcher.register(chattermodNode);
         });
     }
