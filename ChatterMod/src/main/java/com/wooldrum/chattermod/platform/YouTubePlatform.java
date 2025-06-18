@@ -44,8 +44,6 @@ public class YouTubePlatform implements ChatPlatform {
             ChatterMod.LOGGER.error("[YouTube] Cannot connect: API Key is missing.");
             return;
         }
-
-        // FIX: Always resolve the chat ID from the channel, as the liveChatId is no longer in the config.
         this.liveChatId = resolveLiveChatIdFromChannel();
 
         if (this.liveChatId == null || this.liveChatId.isBlank()) {
