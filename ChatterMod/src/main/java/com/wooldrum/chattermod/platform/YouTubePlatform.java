@@ -54,7 +54,6 @@ public class YouTubePlatform implements ChatPlatform {
         }
 
         poller = Executors.newSingleThreadScheduledExecutor();
-        // FIX: Use a fixed 10-second polling interval, since this was removed from the config.
         poller.scheduleAtFixedRate(this::poll, 0, 10, TimeUnit.SECONDS);
         ChatterMod.LOGGER.info("[YouTube] Connected and polling chat for liveChatId: {}", this.liveChatId);
     }
