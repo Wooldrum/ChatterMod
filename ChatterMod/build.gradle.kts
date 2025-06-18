@@ -12,7 +12,7 @@ val gson_version = "2.10.1"
 val twitch4j_version = "1.20.0"
 
 group = "com.wooldrum"
-version = "1.0.0-BETA" // Updated version!
+version = "1.0.0-BETA"
 
 repositories {
     mavenCentral()
